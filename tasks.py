@@ -1,0 +1,90 @@
+"""
+Celery Background Tasks
+"""
+
+import time
+import logging
+import traceback
+from celery_app import app
+
+logger = logging.getLogger(__name__)
+
+
+@app.task(bind=True, name='pharmyrus.search')
+def search_task(self, molecule: str, countries: list = None, include_wipo: bool = False):
+    """
+    Background task for patent search
+    """
+    start_time = time.time()
+    
+    try:
+        self.update_state(
+            state='PROGRESS',
+            meta={
+                'progress': 0,
+                'step': 'Initializing search...',
+                'elapsed': 0,
+                'molecule': molecule
+            }
+        )
+        
+        logger.info(f"🚀 Starting async search for: {molecule}")
+        
+        # Import main search function
+        from main import execute_search_sync
+        
+        # Progress callback
+        def progress_callback(progress: int, step: str):
+            elapsed = time.time() - start_time
+            self.update_state(
+                state='PROGRESS',
+                meta={
+                    'progress': progress,
+                    'step': step,
+                    'elapsed': round(elapsed, 1),
+                    'molecule': molecule
+                }
+            )
+            logger.info(f"📊 {molecule}: {progress}% - {step}")
+        
+        # Execute search
+        result = execute_search_sync(
+            molecule=molecule,
+            countries=countries or ['BR'],
+            include_wipo=include_wipo,
+            progress_callback=progress_callback
+        )
+        
+        elapsed = time.time() - start_time
+        logger.info(f"✅ Async search completed for {molecule} in {elapsed:.1f}s")
+        
+        self.update_state(
+            state='PROGRESS',
+            meta={
+                'progress': 100,
+                'step': 'Complete!',
+                'elapsed': round(elapsed, 1),
+                'molecule': molecule
+            }
+        )
+        
+        return result
+        
+    except Exception as e:
+        error_msg = str(e)
+        error_trace = traceback.format_exc()
+        
+        logger.error(f"❌ Async search failed for {molecule}: {error_msg}")
+        logger.error(error_trace)
+        
+        self.update_state(
+            state='FAILURE',
+            meta={
+                'error': error_msg,
+                'traceback': error_trace,
+                'molecule': molecule,
+                'elapsed': round(time.time() - start_time, 1)
+            }
+        )
+        
+        raise
