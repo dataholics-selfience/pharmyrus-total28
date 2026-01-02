@@ -992,9 +992,7 @@ async def root():
     }
 
 
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "version": "29.0-LOGIN-COMPLETE"}
+# Health endpoint removido - usando o novo com Redis check
 
 
 @app.get("/countries")
