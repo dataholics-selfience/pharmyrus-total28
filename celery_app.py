@@ -7,11 +7,18 @@ import logging
 
 from celery import Celery
 
-# Get Redis URL from Railway environment variable
-redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Get Redis URL from Railway environment variable
+redis_url = os.getenv('REDIS_URL')
+
+# Debug logging
+if redis_url:
+    logger.info(f"✅ REDIS_URL found: {redis_url[:50]}...")
+else:
+    logger.error("❌ REDIS_URL not found! Using localhost fallback")
+    redis_url = 'redis://localhost:6379/0'
 
 # Create Celery app
 app = Celery(
@@ -36,4 +43,4 @@ app.conf.update(
     worker_prefetch_multiplier=1,
 )
 
-logger.info(f"🚀 Celery configured with Redis: {redis_url}")
+logger.info(f"🚀 Celery configured with broker: {redis_url[:50]}...")
