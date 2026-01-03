@@ -45,7 +45,7 @@ from patent_cliff import calculate_patent_cliff
 
 # Import Celery tasks (IMPORTANT: Must be imported at module level for worker to discover)
 try:
-    from tasks import search_task
+    from celery_app import search_task
 except ImportError:
     search_task = None  # Will be None if running without Celery
 

@@ -45,10 +45,53 @@ app.conf.update(
 
 logger.info(f"🚀 Celery configured with broker: {redis_url[:50]}...")
 
-# CRITICAL: Import tasks module to register them with Celery
-# This MUST happen after app is configured
-try:
-    import tasks
-    logger.info("✅ Tasks module imported successfully")
-except ImportError as e:
-    logger.error(f"❌ Failed to import tasks: {e}")
+# CRITICAL: Define task directly here to avoid import issues
+import time
+import traceback
+
+@app.task(bind=True, name='pharmyrus.search')
+def search_task(self, molecule: str, countries: list = None, include_wipo: bool = False):
+    """Background task for patent search"""
+    start_time = time.time()
+    
+    try:
+        self.update_state(
+            state='PROGRESS',
+            meta={'progress': 0, 'step': 'Initializing...', 'elapsed': 0, 'molecule': molecule}
+        )
+        
+        logger.info(f"🚀 Starting search for: {molecule}")
+        
+        # Import inside task to avoid circular dependency
+        import asyncio
+        from main import search_endpoint
+        
+        # Create request
+        class TaskRequest:
+            def __init__(self, nome_molecula, paises_alvo, incluir_wo):
+                self.nome_molecula = nome_molecula
+                self.paises_alvo = paises_alvo
+                self.incluir_wo = incluir_wo
+        
+        request = TaskRequest(molecule, countries or ['BR'], include_wipo)
+        
+        # Run search
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        result = loop.run_until_complete(search_endpoint(request))
+        
+        elapsed = time.time() - start_time
+        logger.info(f"✅ Search completed for {molecule} in {elapsed:.1f}s")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Search failed for {molecule}: {e}")
+        logger.error(traceback.format_exc())
+        raise
+
+logger.info("✅ Task 'pharmyrus.search' registered")
