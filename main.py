@@ -1559,12 +1559,18 @@ async def get_search_status(job_id: str):
         )
     
     elif task.state == 'FAILURE':
-        error_info = task.info or {}
+        error_info = task.info
+        # task.info pode ser Exception ou dict
+        if isinstance(error_info, dict):
+            error_msg = error_info.get('error', 'Unknown error')
+        else:
+            error_msg = str(error_info)
+        
         return StatusResponse(
             job_id=job_id,
             status="failed",
             progress=0,
-            message=f"Search failed: {error_info.get('error', 'Unknown error')}"
+            message=f"Search failed: {error_msg}"
         )
     
     else:

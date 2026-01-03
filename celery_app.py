@@ -62,9 +62,22 @@ def search_task(self, molecule: str, countries: list = None, include_wipo: bool 
         
         logger.info(f"🚀 Starting search for: {molecule}")
         
-        # Import inside task to avoid circular dependency
+        # Import inside task with explicit path
         import asyncio
-        from main import search_endpoint
+        import sys
+        import os
+        
+        # Add /app to path if not there
+        app_path = '/app'
+        if app_path not in sys.path:
+            sys.path.insert(0, app_path)
+        
+        try:
+            from main import search_endpoint
+            logger.info("✅ Successfully imported search_endpoint from main")
+        except Exception as e:
+            logger.error(f"❌ Failed to import from main: {e}")
+            raise
         
         # Create request
         class TaskRequest:
@@ -75,6 +88,8 @@ def search_task(self, molecule: str, countries: list = None, include_wipo: bool 
         
         request = TaskRequest(molecule, countries or ['BR'], include_wipo)
         
+        logger.info(f"📊 Request created for {molecule}")
+        
         # Run search
         try:
             loop = asyncio.get_event_loop()
@@ -82,6 +97,7 @@ def search_task(self, molecule: str, countries: list = None, include_wipo: bool 
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         
+        logger.info("🔄 Running search...")
         result = loop.run_until_complete(search_endpoint(request))
         
         elapsed = time.time() - start_time
