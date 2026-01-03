@@ -1492,20 +1492,20 @@ async def search_async(request: SearchRequest):
     """
     from tasks import search_task
     
-    logger.info(f"🚀 Async search queued: {request.molecule_name} (WIPO: {request.include_wipo})")
+    logger.info(f"🚀 Async search queued: {request.nome_molecula} (WIPO: {request.incluir_wo})")
     
     task = search_task.delay(
-        molecule=request.molecule_name,
-        countries=request.countries,
-        include_wipo=request.include_wipo
+        molecule=request.nome_molecula,
+        countries=request.paises_alvo,
+        include_wipo=request.incluir_wo
     )
     
-    estimated_time = "30-60 minutes" if request.include_wipo else "5-15 minutes"
+    estimated_time = "30-60 minutes" if request.incluir_wo else "5-15 minutes"
     
     return AsyncSearchResponse(
         job_id=task.id,
         status="queued",
-        message=f"Search started for {request.molecule_name}. Track progress with status endpoint.",
+        message=f"Search started for {request.nome_molecula}. Track progress with status endpoint.",
         estimated_time=estimated_time,
         endpoints={
             "status": f"/search/status/{task.id}",
