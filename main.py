@@ -1008,11 +1008,13 @@ async def list_countries():
 
 
 @app.post("/search")
-async def search_patents(request: SearchRequest):
+async def search_patents(request: SearchRequest, progress_callback=None):
     """
     Busca em 2 camadas COMPLETAS:
     1. EPO OPS (código COMPLETO v26 - citations, related, queries expandidas)
     2. Google Patents (crawler AGRESSIVO - todas variações)
+    
+    progress_callback: Optional function(progress: int, step: str) to track progress
     """
     
     start_time = datetime.now()
@@ -1026,17 +1028,29 @@ async def search_patents(request: SearchRequest):
     
     logger.info(f"🚀 Search v27.5-FIXED started: {molecule} | Countries: {target_countries}")
     
+    if progress_callback:
+        progress_callback(5, "Initializing search...")
+    
     async with httpx.AsyncClient() as client:
         # ===== LAYER 1: EPO (CÓDIGO COMPLETO v26) =====
+        if progress_callback:
+            progress_callback(10, "Searching EPO OPS...")
+        
         logger.info("🔵 LAYER 1: EPO OPS (FULL)")
         
         token = await get_epo_token(client)
         pubchem = await get_pubchem_data(client, molecule)
         logger.info(f"   PubChem: {len(pubchem['dev_codes'])} dev codes, CAS: {pubchem['cas']}")
         
+        if progress_callback:
+            progress_callback(15, "Building EPO queries...")
+        
         # Queries COMPLETAS
         queries = build_search_queries(molecule, brand, pubchem["dev_codes"], pubchem["cas"])
         logger.info(f"   Executing {len(queries)} EPO queries...")
+        
+        if progress_callback:
+            progress_callback(20, f"Executing {len(queries)} EPO queries...")
         
         epo_wos = set()
         for query in queries:
@@ -1046,14 +1060,23 @@ async def search_patents(request: SearchRequest):
         
         logger.info(f"   ✅ EPO text search: {len(epo_wos)} WOs")
         
+        if progress_callback:
+            progress_callback(25, f"Found {len(epo_wos)} WO patents in EPO")
+        
         # Buscar WOs relacionados via prioridades (CRÍTICO!)
         if epo_wos:
+            if progress_callback:
+                progress_callback(28, "Searching related patents via priorities...")
+            
             related_wos = await search_related_wos(client, token, list(epo_wos)[:10])
             if related_wos:
                 logger.info(f"   ✅ EPO priority search: {len(related_wos)} additional WOs")
                 epo_wos.update(related_wos)
         
         # Buscar WOs via citações (CRÍTICO!)
+        if progress_callback:
+            progress_callback(32, "Searching citations...")
+        
         key_wos = list(epo_wos)[:5]
         citation_wos = set()
         for wo in key_wos:
@@ -1068,7 +1091,13 @@ async def search_patents(request: SearchRequest):
         
         logger.info(f"   ✅ EPO TOTAL: {len(epo_wos)} WOs")
         
+        if progress_callback:
+            progress_callback(35, f"EPO complete: {len(epo_wos)} WO patents found")
+        
         # ===== LAYER 2: GOOGLE PATENTS (AGRESSIVO) =====
+        if progress_callback:
+            progress_callback(40, "Searching Google Patents...")
+        
         logger.info("🟢 LAYER 2: Google Patents (AGGRESSIVE)")
         
         google_wos = await google_crawler.enrich_with_google(
@@ -1081,11 +1110,17 @@ async def search_patents(request: SearchRequest):
         
         logger.info(f"   ✅ Google found: {len(google_wos)} NEW WOs")
         
+        if progress_callback:
+            progress_callback(55, f"Google complete: {len(google_wos)} additional WOs")
+        
         # Merge WOs
         all_wos = epo_wos | google_wos
         logger.info(f"   ✅ Total WOs (EPO + Google): {len(all_wos)}")
         
         # ===== LAYER 3: INPI BRAZILIAN PATENTS =====
+        if progress_callback:
+            progress_callback(60, "Searching INPI (Brazilian patents)...")
+        
         logger.info("🇧🇷 LAYER 3: INPI Brazilian Patent Office")
         
         # Get Groq API key from environment (user needs to set this in Railway!)
@@ -1106,12 +1141,20 @@ async def search_patents(request: SearchRequest):
         
         logger.info(f"   ✅ INPI found: {len(inpi_patents)} BR patents")
         
+        if progress_callback:
+            progress_callback(70, f"INPI complete: {len(inpi_patents)} BR patents found")
+        
         # Get BR numbers from EPO families
+        if progress_callback:
+            progress_callback(72, "Getting BR families from EPO...")
+        
         logger.info("🔍 LAYER 3b: Getting BR families from EPO")
         br_patents_from_epo = []
         for i, wo in enumerate(sorted(list(all_wos)[:100])):  # Limit to 100 WOs
             if i % 20 == 0 and i > 0:
                 logger.info(f"   Getting families {i}/100...")
+                if progress_callback:
+                    progress_callback(72 + int(i/100 * 8), f"Processing WO families {i}/100...")
             family_patents = await get_family_patents(client, token, wo, target_countries)
             if "BR" in family_patents:
                 br_patents_from_epo.extend(family_patents["BR"])
@@ -1119,6 +1162,9 @@ async def search_patents(request: SearchRequest):
         
         br_numbers = [p["patent_number"] for p in br_patents_from_epo]
         logger.info(f"   ✅ Found {len(br_numbers)} BRs from EPO families")
+        
+        if progress_callback:
+            progress_callback(80, f"Found {len(br_numbers)} BRs from EPO families")
         
         # MERGE: EPO BRs + INPI direct (before enrichment)
         logger.info("🔀 MERGE: Combining BR sources (before INPI enrichment)")
@@ -1132,6 +1178,9 @@ async def search_patents(request: SearchRequest):
         # ============================================================================
         # LAYER 4: INPI ENRICHMENT - Enrich all BRs with complete INPI data
         # ============================================================================
+        if progress_callback:
+            progress_callback(82, "Enriching BR patents with INPI data...")
+        
         logger.info("")
         logger.info("=" * 100)
         logger.info("🔍 LAYER 4: INPI ENRICHMENT - Complete BR data from INPI")
@@ -1168,6 +1217,10 @@ async def search_patents(request: SearchRequest):
             
             for batch_idx, batch in enumerate(batches, 1):
                 try:
+                    if progress_callback:
+                        enrichment_progress = 82 + int((batch_idx / len(batches)) * 8)
+                        progress_callback(enrichment_progress, f"Enriching BR patents batch {batch_idx}/{len(batches)}...")
+                    
                     logger.info(f"")
                     logger.info(f"   📦 Batch {batch_idx}/{len(batches)} ({len(batch)} BRs): {', '.join(batch[:3])}{'...' if len(batch) > 3 else ''}")
                     
@@ -1200,6 +1253,9 @@ async def search_patents(request: SearchRequest):
             else:
                 logger.info(f"   ✅ All BRs already have complete data - skipping enrichment")
         
+        if progress_callback:
+            progress_callback(90, "Building patent families and response...")
+        
         # FINAL MERGE: Combine everything
         logger.info("")
         logger.info("🔀 FINAL MERGE: Combining all BR data sources")
@@ -1224,6 +1280,9 @@ async def search_patents(request: SearchRequest):
                     seen_patents.add(pnum)
                     patents_by_country["BR"].append(patent)
         
+        if progress_callback:
+            progress_callback(92, "Processing remaining WO families...")
+        
         # Process remaining WOs for other countries
         for i, wo in enumerate(sorted(list(all_wos)[100:])):  # Skip first 100 already processed
             if i > 0 and i % 20 == 0:
@@ -1241,6 +1300,9 @@ async def search_patents(request: SearchRequest):
                         patents_by_country[country].append(p)
             
             await asyncio.sleep(0.3)
+        
+        if progress_callback:
+            progress_callback(95, "Finalizing patent data...")
         
         all_patents = []
         for country, patents in patents_by_country.items():
@@ -1266,6 +1328,9 @@ async def search_patents(request: SearchRequest):
                 logger.info(f"   Enriched {i + 1}/{len(incomplete_brs)} BRs...")
         
         logger.info(f"   ✅ BR enrichment complete")
+        
+        if progress_callback:
+            progress_callback(97, "Calculating patent cliff...")
         
         # FALLBACK: Google Patents para BRs com metadata ainda incompleta
         logger.info(f"🌐 Google Patents fallback for missing metadata...")
@@ -1309,6 +1374,9 @@ async def search_patents(request: SearchRequest):
         patent_cliff = calculate_patent_cliff(all_patents)
         logger.info(f"   ✅ Patent Cliff calculated")
         
+        if progress_callback:
+            progress_callback(98, "Adding expiration dates...")
+        
         # ADICIONAR expiration_date e status em CADA patente
         logger.info("📅 Adding expiration dates to patents...")
         for i, patent in enumerate(all_patents):
@@ -1336,6 +1404,9 @@ async def search_patents(request: SearchRequest):
                         patent["patent_status"] = "Warning (<5 years)"
                     else:
                         patent["patent_status"] = "Safe (>5 years)"
+        
+        if progress_callback:
+            progress_callback(99, "Finalizing results...")
         
         # Separate by source
         logger.info("📂 Separating by source...")

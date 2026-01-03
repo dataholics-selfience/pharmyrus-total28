@@ -92,6 +92,20 @@ def search_task(self, molecule: str, countries: list = None, include_wipo: bool 
         
         logger.info(f"📊 Request created for {molecule}")
         
+        # Define progress callback
+        def progress_callback(progress: int, step: str):
+            elapsed = time.time() - start_time
+            self.update_state(
+                state='PROGRESS',
+                meta={
+                    'progress': progress,
+                    'step': step,
+                    'elapsed': round(elapsed, 1),
+                    'molecule': molecule
+                }
+            )
+            logger.info(f"📊 [{progress}%] {step}")
+        
         # Run search
         try:
             loop = asyncio.get_event_loop()
@@ -100,7 +114,7 @@ def search_task(self, molecule: str, countries: list = None, include_wipo: bool 
             asyncio.set_event_loop(loop)
         
         logger.info("🔄 Running search...")
-        result = loop.run_until_complete(search_patents(request))
+        result = loop.run_until_complete(search_patents(request, progress_callback=progress_callback))
         
         elapsed = time.time() - start_time
         logger.info(f"✅ Search completed for {molecule} in {elapsed:.1f}s")
