@@ -73,8 +73,8 @@ def search_task(self, molecule: str, countries: list = None, include_wipo: bool 
             sys.path.insert(0, app_path)
         
         try:
-            from main import search_endpoint
-            logger.info("✅ Successfully imported search_endpoint from main")
+            from main import search_patents
+            logger.info("✅ Successfully imported search_patents from main")
         except Exception as e:
             logger.error(f"❌ Failed to import from main: {e}")
             raise
@@ -98,7 +98,7 @@ def search_task(self, molecule: str, countries: list = None, include_wipo: bool 
             asyncio.set_event_loop(loop)
         
         logger.info("🔄 Running search...")
-        result = loop.run_until_complete(search_endpoint(request))
+        result = loop.run_until_complete(search_patents(request))
         
         elapsed = time.time() - start_time
         logger.info(f"✅ Search completed for {molecule} in {elapsed:.1f}s")
