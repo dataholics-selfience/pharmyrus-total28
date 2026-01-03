@@ -83,8 +83,10 @@ def search_task(self, molecule: str, countries: list = None, include_wipo: bool 
         class TaskRequest:
             def __init__(self, nome_molecula, paises_alvo, incluir_wo):
                 self.nome_molecula = nome_molecula
+                self.nome_comercial = None  # Optional field
                 self.paises_alvo = paises_alvo
                 self.incluir_wo = incluir_wo
+                self.max_results = 100  # Default value
         
         request = TaskRequest(molecule, countries or ['BR'], include_wipo)
         
