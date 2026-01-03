@@ -43,6 +43,12 @@ from merge_logic import merge_br_patents
 # Import Patent Cliff Calculator
 from patent_cliff import calculate_patent_cliff
 
+# Import Celery tasks (IMPORTANT: Must be imported at module level for worker to discover)
+try:
+    from tasks import search_task
+except ImportError:
+    search_task = None  # Will be None if running without Celery
+
 # Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("pharmyrus")
@@ -1491,7 +1497,8 @@ async def search_async(request: SearchRequest):
     Asynchronous patent search - Returns job_id immediately
     Use for long searches with WIPO (30-60 min)
     """
-    from tasks import search_task
+    if search_task is None:
+        raise HTTPException(status_code=503, detail="Async search not available (Celery not configured)")
     
     logger.info(f"🚀 Async search queued: {request.nome_molecula} (WIPO: {request.incluir_wo})")
     

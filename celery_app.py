@@ -44,3 +44,11 @@ app.conf.update(
 )
 
 logger.info(f"🚀 Celery configured with broker: {redis_url[:50]}...")
+
+# CRITICAL: Import tasks module to register them with Celery
+# This MUST happen after app is configured
+try:
+    import tasks
+    logger.info("✅ Tasks module imported successfully")
+except ImportError as e:
+    logger.error(f"❌ Failed to import tasks: {e}")
