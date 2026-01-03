@@ -30,8 +30,13 @@ def search_task(self, molecule: str, countries: list = None, include_wipo: bool 
         
         logger.info(f"🚀 Starting async search for: {molecule}")
         
-        # Import main search function
-        from main import execute_search_sync
+        # Import here to avoid circular dependency
+        import asyncio
+        import sys
+        
+        # Get the search function - import inside task to avoid circular import
+        sys.path.insert(0, '/app')
+        from main import search_endpoint, SearchRequest
         
         # Progress callback
         def progress_callback(progress: int, step: str):
@@ -47,13 +52,27 @@ def search_task(self, molecule: str, countries: list = None, include_wipo: bool 
             )
             logger.info(f"📊 {molecule}: {progress}% - {step}")
         
-        # Execute search
-        result = execute_search_sync(
-            molecule=molecule,
-            countries=countries or ['BR'],
-            include_wipo=include_wipo,
-            progress_callback=progress_callback
+        # Create request object
+        class TaskRequest:
+            def __init__(self, nome_molecula, paises_alvo, incluir_wo):
+                self.nome_molecula = nome_molecula
+                self.paises_alvo = paises_alvo
+                self.incluir_wo = incluir_wo
+        
+        request = TaskRequest(
+            nome_molecula=molecule,
+            paises_alvo=countries or ['BR'],
+            incluir_wo=include_wipo
         )
+        
+        # Run search
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        result = loop.run_until_complete(search_endpoint(request))
         
         elapsed = time.time() - start_time
         logger.info(f"✅ Async search completed for {molecule} in {elapsed:.1f}s")
